@@ -1,43 +1,27 @@
 package sslCertificateMaker
 
-import scala.concurrent.duration.DurationInt
-import scala.concurrent.duration.{Duration=>ScDuration} 
-import scala.concurrent.blocking
 import java.io.FileReader
 import java.io.FileWriter
 import java.net.URI
 import java.net.URL
+import java.time.Duration
+import java.time.Instant
+
 import scala.collection.breakOut
-import scala.collection.JavaConversions._
+import scala.concurrent.Await
+import scala.concurrent.duration.{ Duration=>ScDuration }
+
 import org.shredzone.acme4j.Account
 import org.shredzone.acme4j.AccountBuilder
+import org.shredzone.acme4j.Login
 import org.shredzone.acme4j.Metadata
 import org.shredzone.acme4j.Session
-import org.shredzone.acme4j.util.KeyPairUtils
 import org.shredzone.acme4j.exception.AcmeServerException
-import org.shredzone.acme4j.Login
-import org.shredzone.acme4j.Order
-import java.time.Instant
-import java.time.Duration
-import org.shredzone.acme4j.Status
-import org.shredzone.acme4j.Authorization
-import org.shredzone.acme4j.challenge.Http01Challenge
-import scala.concurrent.Future
-import scala.concurrent.Promise
-import scala.annotation.tailrec
-import scala.concurrent.duration.FiniteDuration
-import org.shredzone.acme4j.exception.AcmeRetryAfterException
-import java.util.concurrent.TimeUnit
-import scala.util.control.NonFatal
-import org.shredzone.acme4j.util.CSRBuilder
-import scala.concurrent.Await
-import akka.actor.ActorSystem
+import org.shredzone.acme4j.util.KeyPairUtils
 
 /** Para hacer esto fui guiado por "https://shredzone.org/maven/acme4j/" cuyo repositorio git esta en: "https://github.com/shred/acme4j" */
 object Main {
-	import scala.concurrent.ExecutionContext.Implicits.global;
-
-	private case class AuthResult(success: Boolean);
+;
 
 	private final val PARAM_env = "env";
 	private final val PARAM_acmeAccountKeyPairFileName = "acmeAccountKeyPairFileName";
@@ -195,118 +179,22 @@ object Main {
 			(oDomainKeyPair, oOrganization, oCsrFileName) match {
 				case (Some(domainKeyPair), Some(organization), Some(csrFileName)) =>
 					val domains = domainsString.split(',').toList;
-					println(s"creating certification creation order for domains $domains signed with the domain key ${oDomainKeyPairFileName.get}")
-					val orderBuilder = account.newOrder().domains(domains);
 
-					params.get(PARAM_certificateExpirationInDays).foreach { durationString =>
+					val oCertificateExpiration = params.get(PARAM_certificateExpirationInDays).map { durationString =>
 						val duration = java.lang.Long.parseUnsignedLong(durationString)
-						orderBuilder.notAfter(Instant.now().plus(Duration.ofDays(duration)))
-					}
-
-					val order: Order = orderBuilder.create();
-
-					val system: ActorSystem = ActorSystem("ssl-certificate-maker");
-					
-					def loop(remainingAuths: List[Authorization], chain: Future[List[AuthResult]]): Future[List[AuthResult]] = {
-						remainingAuths match {
-							case Nil => chain
-							case head :: tail =>
-								loop(tail, chain.flatMap { list => processAuth(head)(system).map(authResult => authResult :: list) })
-						}
+						Instant.now().plus(Duration.ofDays(duration))
 					}
 					
-
-					println("authorization process started")
-					val completionOfAllProcesses =
-						loop(order.getAuthorizations().toList, Future.successful(Nil))
-							.map(_.reverse);
-
-					for {
-						authResults <- completionOfAllProcesses
-					} {
-						if (authResults.forall(_.success)) {
-							println("All the challenges were accomplished. Creating the CSR ...");
-							val csrb: CSRBuilder = new CSRBuilder();
-							domains.foreach(domain => csrb.addDomain(domain));
-							csrb.setOrganization(organization)
-							csrb.sign(domainKeyPair);
-							println(s"Saving CSR to file $csrFileName ..."); 
-							csrb.write(new FileWriter(csrFileName));
-
-							val csr = csrb.getEncoded();
-							order.execute(csr);
-							println("certificate creation order was executed. Waiting ...")
-						}
-					}
-					
-					// TODO download the certificate signed by the Let's Encrypt CA
-					
-					completionOfAllProcesses.map(_ => system.terminate());
-					
-					Await.result(system.whenTerminated, ScDuration.Inf)
-
+					println(s"creating certification creation order for domains $domains signed with the domain key ${oDomainKeyPairFileName.get}");
+					val process = new Process(account, domains, domainKeyPair, organization, oCertificateExpiration, csrFileName);
+					Await.result(process.start(), ScDuration.Inf)
 
 				case _ =>
 					throw new AssertionError(s"El parámetro `$PARAM_orderCertificateFor` requiere que los parámetros `$PARAM_domainKeyPairCmd`, `$PARAM_organization`, y `$PARAM_csrFileName` estén definidos.");
 
 			}
 		}
-		
-
 	}
 
-	private def processAuth(auth: Authorization)(implicit system: ActorSystem): Future[AuthResult] = {
-		println(s"Processing authorization ${auth.getJSON} ...");
-		val challenge: Http01Challenge = auth.findChallenge(Http01Challenge.TYPE);
-
-		val server = new Server(challenge.getToken, challenge.getAuthorization)(system);
-
-		def waitAuth(auth: Authorization): Future[AuthResult] = {
-			val promise = Promise[AuthResult]();
-
-			def loop(duration: FiniteDuration): Unit = {
-				print(".");
-				this.wait(duration).map { _ =>
-					try {
-						val status = blocking {
-							auth.update(); // throws AcmeRetryAfterException
-							auth.getStatus;
-						}
-						if (status == Status.INVALID) {
-							promise.success(AuthResult(false))
-						} else if (status == Status.VALID) {
-							promise.success(AuthResult(true))
-						} else
-							loop(5.seconds)
-					} catch {
-						case arae: AcmeRetryAfterException => // thrown by auth.update()
-							val x = Duration.between(arae.getRetryAfter, Instant.now());
-							print(s"[${x.getSeconds}]")
-							loop(FiniteDuration(x.getSeconds, TimeUnit.SECONDS))
-
-						case NonFatal(e) =>
-							promise.failure(e);
-					}
-				}
-
-			}
-			print("Waiting authorization:");
-			loop(5.seconds);
-			promise.future;
-		}
-
-		for {
-			_ <- server.ready.future
-			_ = challenge.trigger();
-			_ <- server.challengeWasStarted.future
-			authResult <- waitAuth(auth)
-			_ <- server.terminate()
-		} yield authResult
-	}
-
-	def wait(duration: FiniteDuration)(implicit system: ActorSystem): Future[Unit] = {
-		val promise = Promise[Unit]();
-		system.scheduler.scheduleOnce(duration) { promise.success(()) }
-		promise.future;
-	}	
+	
 }
