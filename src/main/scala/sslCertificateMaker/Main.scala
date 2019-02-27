@@ -1,6 +1,7 @@
 package sslCertificateMaker
 
 import scala.concurrent.duration.DurationInt
+import scala.concurrent.duration.{Duration=>ScDuration} 
 import scala.concurrent.blocking
 import java.io.FileReader
 import java.io.FileWriter
@@ -29,6 +30,8 @@ import org.shredzone.acme4j.exception.AcmeRetryAfterException
 import java.util.concurrent.TimeUnit
 import scala.util.control.NonFatal
 import org.shredzone.acme4j.util.CSRBuilder
+import scala.concurrent.Await
+import akka.actor.ActorSystem
 
 /** Para hacer esto fui guiado por "https://shredzone.org/maven/acme4j/" cuyo repositorio git esta en: "https://github.com/shred/acme4j" */
 object Main {
@@ -202,13 +205,16 @@ object Main {
 
 					val order: Order = orderBuilder.create();
 
+					val system: ActorSystem = ActorSystem("ssl-certificate-maker");
+					
 					def loop(remainingAuths: List[Authorization], chain: Future[List[AuthResult]]): Future[List[AuthResult]] = {
 						remainingAuths match {
 							case Nil => chain
 							case head :: tail =>
-								loop(tail, chain.flatMap { list => processAuth(head).map(authResult => authResult :: list) })
+								loop(tail, chain.flatMap { list => processAuth(head)(system).map(authResult => authResult :: list) })
 						}
 					}
+					
 
 					println("authorization process started")
 					val completionOfAllProcesses =
@@ -232,27 +238,35 @@ object Main {
 							println("certificate creation order was executed. Waiting ...")
 						}
 					}
+					
+					// TODO download the certificate signed by the Let's Encrypt CA
+					
+					completionOfAllProcesses.map(_ => system.terminate());
+					
+					Await.result(system.whenTerminated, ScDuration.Inf)
+
 
 				case _ =>
 					throw new AssertionError(s"El parámetro `$PARAM_orderCertificateFor` requiere que los parámetros `$PARAM_domainKeyPairCmd`, `$PARAM_organization`, y `$PARAM_csrFileName` estén definidos.");
 
 			}
-
 		}
+		
+
 	}
 
-	private def processAuth(auth: Authorization): Future[AuthResult] = {
+	private def processAuth(auth: Authorization)(implicit system: ActorSystem): Future[AuthResult] = {
 		println(s"Processing authorization ${auth.getJSON} ...");
 		val challenge: Http01Challenge = auth.findChallenge(Http01Challenge.TYPE);
 
-		val server = new Server(challenge.getToken, challenge.getAuthorization);
+		val server = new Server(challenge.getToken, challenge.getAuthorization)(system);
 
 		def waitAuth(auth: Authorization): Future[AuthResult] = {
 			val promise = Promise[AuthResult]();
 
 			def loop(duration: FiniteDuration): Unit = {
 				print(".");
-				server.wait(duration).map { _ =>
+				this.wait(duration).map { _ =>
 					try {
 						val status = blocking {
 							auth.update(); // throws AcmeRetryAfterException
@@ -290,4 +304,9 @@ object Main {
 		} yield authResult
 	}
 
+	def wait(duration: FiniteDuration)(implicit system: ActorSystem): Future[Unit] = {
+		val promise = Promise[Unit]();
+		system.scheduler.scheduleOnce(duration) { promise.success(()) }
+		promise.future;
+	}	
 }

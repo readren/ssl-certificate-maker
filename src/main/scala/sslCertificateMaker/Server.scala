@@ -17,9 +17,8 @@ import scala.concurrent.Promise
 import scala.concurrent.duration.FiniteDuration
 import akka.event.Logging
 
-class Server(token: String, content: String) {
+class Server(token: String, content: String)(implicit system: ActorSystem) {
 	println("starting the server ...");
-	private implicit val system: ActorSystem = ActorSystem("ssl-certificate-maker")
 	private implicit val materializer: ActorMaterializer = ActorMaterializer()
 	private implicit val executionContext: ExecutionContext = system.dispatcher;
 
@@ -50,10 +49,7 @@ class Server(token: String, content: String) {
 			challengeWasStarted.failure(e);
 			Console.err.println(s"Server could not start!")
 			e.printStackTrace()
-			system.terminate()
 	}
-
-	val whenTerminated = system.whenTerminated;
 
 	def terminate(): Future[Unit] = {
 		println("terminating the server ...")
@@ -65,11 +61,5 @@ class Server(token: String, content: String) {
 			println("server terminated.")
 			()
 		}
-	}
-
-	def wait(duration: FiniteDuration): Future[Unit] = {
-		val promise = Promise[Unit]();
-		system.scheduler.scheduleOnce(duration) { promise.success(()) }
-		promise.future;
 	}
 }
