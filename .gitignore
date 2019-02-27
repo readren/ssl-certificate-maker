@@ -1,0 +1,13 @@
+/.project
+/.classpath
+/.settings
+/.cache-main
+/bin
+/target
+
+#sbt
+/target/
+**/project/target/**
+
+#keys
+*.pem
