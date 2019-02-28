@@ -30,7 +30,7 @@ object Main {
 	private final val PARAM_domainKeyPairCmd = "domainKeyPairCmd";
 	private final val PARAM_organization = "organization";
 	private final val PARAM_accountLocationUrl = "accountLocationUrl";
-	private final val PARAM_allowNewAcmeAccountCreation = "createAcmeAccount";
+	private final val PARAM_allowNewAcmeAccountCreation = "allowNewAcmeAccountCreation";
 	private final val PARAM_orderCertificateFor = "orderCertificateFor";
 	private final val PARAM_certificateExpirationInDays = "certificateExpirationInDays";
 	private final val PARAM_csrFileName = "csrFileName";
@@ -127,7 +127,7 @@ object Main {
 
 						case "load" =>
 							println(s"""Loading domain key pair from "$domainKeyPairFileName".""");
-							val fileReader: FileReader = new FileReader(acmeAccountKeyPairFileName);
+							val fileReader: FileReader = new FileReader(domainKeyPairFileName);
 							try {
 								KeyPairUtils.readKeyPair(fileReader);
 							} finally fileReader.close()
