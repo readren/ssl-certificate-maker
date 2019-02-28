@@ -34,6 +34,7 @@ object Main {
 	private final val PARAM_orderCertificateFor = "orderCertificateFor";
 	private final val PARAM_certificateExpirationInDays = "certificateExpirationInDays";
 	private final val PARAM_csrFileName = "csrFileName";
+	private final val PARAM_signedCertFileName = "signedCertFileName";
 
 	private final val paramNames = Map(
 		PARAM_env -> "Required: Specifies which environment to use. Valid values are: `staging` and `production`.",
@@ -46,7 +47,8 @@ object Main {
 		PARAM_organization -> s"Required when the parameter `$PARAM_orderCertificateFor` is specified. Specifies the organization to which the certificate would be issued",
 		PARAM_orderCertificateFor -> "instructs the creation of a certificate for the comma separated list of domains",
 		PARAM_certificateExpirationInDays -> s"Required when the parameter `$PARAM_orderCertificateFor` is specified. Specifies the days of live of the certificate before expiration",
-		PARAM_csrFileName -> "name of the file where the certificate signing request would be saved"
+		PARAM_csrFileName -> "name of the file where the certificate signing request would be saved",
+		PARAM_signedCertFileName -> "name of the fine where the signed certificate would be saved"
 	);
 
 	def main(args: Array[String]): Unit = {
@@ -88,9 +90,9 @@ object Main {
 
 		val acmeAccountKeyPair = params.get(PARAM_acmeAccountKeyPairCmd) match {
 			case Some("create") =>
-				println(s"creating a new ACME account key pair");
+				println(s"Creating a new ACME account key pair");
 				val keyPair = KeyPairUtils.createKeyPair(2048);
-				println(s"saving new ACME account key pair to $acmeAccountKeyPairFileName");
+				println(s"""Saving new ACME account key pair to "$acmeAccountKeyPairFileName".""");
 				val fileWriter: FileWriter = new FileWriter(acmeAccountKeyPairFileName)
 				try {
 					KeyPairUtils.writeKeyPair(keyPair, fileWriter);
@@ -98,7 +100,7 @@ object Main {
 				} finally fileWriter.close();
 
 			case Some("load") =>
-				println(s"loading ACME account key pair from $acmeAccountKeyPairFileName");
+				println(s"""Loading ACME account key pair from "$acmeAccountKeyPairFileName".""");
 				val fileReader: FileReader = new FileReader(acmeAccountKeyPairFileName);
 				try {
 					KeyPairUtils.readKeyPair(fileReader);
@@ -114,17 +116,17 @@ object Main {
 				case Some(domainKeyPairFileName) =>
 					source match {
 						case "create" =>
-							println(s"creating a new domain key pair");
+							println(s"Creating a new domain key pair");
 							val keyPair = KeyPairUtils.createKeyPair(2048);
+							println(s"""Saving new domain key pair to "$domainKeyPairFileName".""");
 							val fileWriter: FileWriter = new FileWriter(domainKeyPairFileName)
 							try {
-								println(s"saving new domain key pair to $domainKeyPairFileName");
 								KeyPairUtils.writeKeyPair(keyPair, fileWriter);
 								keyPair
 							} finally fileWriter.close();
 
 						case "load" =>
-							println(s"loading domain key pair from $domainKeyPairFileName");
+							println(s"""Loading domain key pair from "$domainKeyPairFileName".""");
 							val fileReader: FileReader = new FileReader(acmeAccountKeyPairFileName);
 							try {
 								KeyPairUtils.readKeyPair(fileReader);
@@ -174,10 +176,11 @@ object Main {
 		println(s"Account location URL: $accountLocationUrl");
 
 		val oCsrFileName: Option[String] = params.get(PARAM_csrFileName);
+		val oSignedCertFileName: Option[String] = params.get(PARAM_signedCertFileName);
 
 		params.get(PARAM_orderCertificateFor).foreach { domainsString =>
-			(oDomainKeyPair, oOrganization, oCsrFileName) match {
-				case (Some(domainKeyPair), Some(organization), Some(csrFileName)) =>
+			(oDomainKeyPair, oOrganization, oCsrFileName, oSignedCertFileName) match {
+				case (Some(domainKeyPair), Some(organization), Some(csrFileName), Some(signedCertFileName)) =>
 					val domains = domainsString.split(',').toList;
 
 					val oCertificateExpiration = params.get(PARAM_certificateExpirationInDays).map { durationString =>
@@ -185,12 +188,11 @@ object Main {
 						Instant.now().plus(Duration.ofDays(duration))
 					}
 					
-					println(s"creating certification creation order for domains $domains signed with the domain key ${oDomainKeyPairFileName.get}");
-					val process = new Process(account, domains, domainKeyPair, organization, oCertificateExpiration, csrFileName);
-					Await.result(process.start(), ScDuration.Inf)
+					val process = new Process(account, domains, domainKeyPair, organization, oCertificateExpiration, csrFileName, signedCertFileName);
+					Await.ready(process.start(), ScDuration.Inf)
 
 				case _ =>
-					throw new AssertionError(s"El parámetro `$PARAM_orderCertificateFor` requiere que los parámetros `$PARAM_domainKeyPairCmd`, `$PARAM_organization`, y `$PARAM_csrFileName` estén definidos.");
+					throw new AssertionError(s"El parámetro `$PARAM_orderCertificateFor` requiere que los parámetros `$PARAM_domainKeyPairCmd`, `$PARAM_organization`, `$PARAM_csrFileName`, y `$PARAM_signedCertFileName` estén definidos.");
 
 			}
 		}

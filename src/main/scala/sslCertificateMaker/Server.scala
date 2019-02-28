@@ -1,21 +1,23 @@
 package sslCertificateMaker
 
-import scala.concurrent.duration.DurationInt
 import scala.concurrent.ExecutionContext
-import scala.concurrent.Await
-import scala.concurrent.duration.Duration
 import scala.concurrent.Future
+import scala.concurrent.Promise
+import scala.concurrent.duration.DurationInt
 import scala.util.Failure
 import scala.util.Success
-import akka.http.scaladsl.server.Directives._
-import akka.stream.ActorMaterializer
+
 import akka.actor.ActorSystem
-import akka.http.scaladsl.Http
-import akka.http.scaladsl.server.Route
-import akka.actor.ActorRef
-import scala.concurrent.Promise
-import scala.concurrent.duration.FiniteDuration
 import akka.event.Logging
+import akka.http.scaladsl.Http
+import akka.http.scaladsl.server.Directives._enhanceRouteWithConcatenation // sin esto no anda el PathMatcher en eclipse
+import akka.http.scaladsl.server.Directives._segmentStringToPathMatcher // sin esto no anda el PathMatcher en eclipse
+import akka.http.scaladsl.server.Directives.complete
+import akka.http.scaladsl.server.Directives.extractUnmatchedPath
+import akka.http.scaladsl.server.Directives.logRequestResult
+import akka.http.scaladsl.server.Directives.pathPrefix
+import akka.http.scaladsl.server.Route
+import akka.stream.ActorMaterializer
 
 class Server(token: String, content: String)(implicit system: ActorSystem) {
 	println("starting the server ...");
@@ -25,19 +27,20 @@ class Server(token: String, content: String)(implicit system: ActorSystem) {
 	private val http = Http()
 
 	val ready: Promise[Unit] = Promise();
-	val challengeWasStarted: Promise[Unit] = Promise();
+	val challengeWasCatched: Promise[Unit] = Promise();
 
 	private lazy val routes: Route =
 		logRequestResult(("server activity:", Logging.InfoLevel)) {
-			path(s".well-known/acme-challenge/$token") {
-				println("challenge was catched")
-				this.challengeWasStarted.success(())
+			pathPrefix(".well-known" / "acme-challenge" / token) {
+				this.challengeWasCatched.trySuccess(())
 				complete(content);
+			} ~ extractUnmatchedPath { path =>
+				complete(path.toString)
 			}
 		}
 
 	//#http-server
-	private val serverBinding: Future[Http.ServerBinding] = this.http.bindAndHandle(routes, "localhost", 80)
+	private val serverBinding: Future[Http.ServerBinding] = this.http.bindAndHandle(routes, "0.0.0.0", 80)
 
 	serverBinding.onComplete {
 		case Success(bound) =>
@@ -46,20 +49,16 @@ class Server(token: String, content: String)(implicit system: ActorSystem) {
 
 		case Failure(e) =>
 			ready.failure(e)
-			challengeWasStarted.failure(e);
+			challengeWasCatched.failure(e);
 			Console.err.println(s"Server could not start!")
 			e.printStackTrace()
 	}
 
 	def terminate(): Future[Unit] = {
-		println("terminating the server ...")
 		for {
 			normalBinding <- this.serverBinding
 			normalTerminated <- normalBinding.terminate(3.seconds)
 			_ <- this.http.shutdownAllConnectionPools()
-		} yield {
-			println("server terminated.")
-			()
-		}
+		} yield ()
 	}
 }

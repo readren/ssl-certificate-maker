@@ -11,3 +11,5 @@
 
 #keys
 *.pem
+*.crt
+*.csr
