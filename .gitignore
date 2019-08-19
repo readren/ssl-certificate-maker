@@ -1,13 +1,17 @@
+# Eclipse
 /.project
 /.classpath
 /.settings
-/.cache-main
 /bin
-/target
+
+# IntelliJ
+/.idea
+/ssl-certificate-maker.iml
 
 #sbt
 /target/
 **/project/target/**
+/.cache-main
 
 #keys
 *.pem
