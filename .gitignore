@@ -13,7 +13,9 @@
 **/project/target/**
 /.cache-main
 
-#keys
+#keys and keystores
 *.pem
 *.crt
 *.csr
+*.p12
+*.pkcs12

@@ -21,7 +21,6 @@ import org.shredzone.acme4j.util.KeyPairUtils
 
 /** Para hacer esto fui guiado por "https://shredzone.org/maven/acme4j/" cuyo repositorio git esta en: "https://github.com/shred/acme4j" */
 object Main {
-;
 
 	private final val PARAM_env = "env";
 	private final val PARAM_acmeAccountKeyPairFileName = "acmeAccountKeyPairFileName";
@@ -55,7 +54,7 @@ object Main {
 		val params: Map[String, String] = {
 			(for { arg <- args } yield {
 				val split = arg.split('=');
-				if (split.size != 2)
+				if (split.length != 2)
 					throw new AssertionError("Error de sintaxix en parámetro: `$arg`")
 				else if (paramNames.contains(split(0)))
 					split(0) -> split(1)
@@ -76,9 +75,9 @@ object Main {
 		}
 		val session: Session = new Session(letsEncriptUri);
 
-		val meta: Metadata = session.getMetadata();
-		val tos: URI = meta.getTermsOfService();
-		val website: URL = meta.getWebsite();
+		val meta: Metadata = session.getMetadata;
+		val tos: URI = meta.getTermsOfService;
+		val website: URL = meta.getWebsite;
 		println(s"terms of service: $tos");
 		println(s"let's encript website: $website");
 
@@ -145,10 +144,10 @@ object Main {
 
 		val account: Account =
 			params.get(PARAM_accountLocationUrl) match {
-				case Some(accountLocationUrl) =>
-					println(s"Obtaing the ACME account from $accountLocationUrl");
-					val login: Login = session.login(new URL(accountLocationUrl), acmeAccountKeyPair);
-					login.getAccount();
+				case Some(accountLocationUrlValue) =>
+					println(s"Obtaining the ACME account from $accountLocationUrlValue");
+					val login: Login = session.login(new URL(accountLocationUrlValue), acmeAccountKeyPair);
+					login.getAccount;
 
 				case None =>
 					try {
@@ -172,7 +171,7 @@ object Main {
 					}
 			}
 
-		val accountLocationUrl: URL = account.getLocation();
+		val accountLocationUrl: URL = account.getLocation;
 		println(s"Account location URL: $accountLocationUrl");
 
 		val oCsrFileName: Option[String] = params.get(PARAM_csrFileName);

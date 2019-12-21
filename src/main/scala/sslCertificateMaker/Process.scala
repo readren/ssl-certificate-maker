@@ -11,7 +11,6 @@ import org.shredzone.acme4j.Authorization
 import scala.concurrent.Future
 import java.time.Instant
 import org.shredzone.acme4j.Account
-import scala.concurrent.Await
 import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.Promise
 import org.shredzone.acme4j.challenge.Http01Challenge
@@ -22,7 +21,6 @@ import scala.util.control.NonFatal
 import org.shredzone.acme4j.util.CSRBuilder
 import java.io.FileWriter
 import org.shredzone.acme4j.Status
-import scala.concurrent.ExecutionContext
 import org.shredzone.acme4j.Certificate
 import scala.util.Success
 import scala.util.Failure
@@ -143,7 +141,7 @@ class Process(account: Account, domains: List[String], domainKeyPair: KeyPair, o
 			_ <- server.challengeWasCatched.future
 			_ = println("The fake sever has catched the challenge.")
 			authResult <- waitAuth(auth)
-			_ = println(if(authResult) "The challege was accomplished." else "The authorization changed to an invalid state.")
+			_ = println(if(authResult) "The challenge was accomplished." else "The authorization changed to an invalid state.")
 			_ = println("Terminating the fake server...")
 			_ <- server.terminate()
 		} yield {
